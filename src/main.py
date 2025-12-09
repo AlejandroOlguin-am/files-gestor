@@ -20,3 +20,12 @@ def delete_duplicate_files(directory):
     for duplicate in duplicates:
         os.remove(duplicate)
         print(f"Deleted duplicate file: {duplicate}")
+
+
+def hash_file(filepath):
+    """Generate MD5 hash for a file."""
+    hasher = hashlib.md5()
+    with open(filepath, 'rb') as f:
+        buf = f.read()
+        hasher.update(buf)
+    return hasher.hexdigest()
