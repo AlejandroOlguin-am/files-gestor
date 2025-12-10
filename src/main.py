@@ -2,30 +2,21 @@ import os
 import hashlib
 import shutil
 
-def delete_duplicate_files(directory):
-    """Delete duplicate files in the given directory."""
-    file_hashes = {}
-    duplicates = []
+def eliminar_duplicados(directorio_origen):
+    hashes = {}
+    duplicados_dir = os.path.join(directorio_origen, "_DUPLICADOS")
+    os.makedirs(duplicados_dir, exist_ok=True)
 
-    for root, _, files in os.walk(directory):
+    for root, _, files in os.walk(directorio_origen):
         for filename in files:
             filepath = os.path.join(root, filename)
-            file_hash = hash_file(filepath)
-
-            if file_hash in file_hashes:
-                duplicates.append(filepath)
+            
+            # Calcular Hash
+            with open(filepath, "rb") as f:
+                file_hash = hashlib.md5(f.read()).hexdigest()
+            
+            if file_hash in hashes:
+                print(f"Duplicado encontrado: {filename}")
+                shutil.move(filepath, os.path.join(duplicados_dir, filename))
             else:
-                file_hashes[file_hash] = filepath
-
-    for duplicate in duplicates:
-        os.remove(duplicate)
-        print(f"Deleted duplicate file: {duplicate}")
-
-
-def hash_file(filepath):
-    """Generate MD5 hash for a file."""
-    hasher = hashlib.md5()
-    with open(filepath, 'rb') as f:
-        buf = f.read()
-        hasher.update(buf)
-    return hasher.hexdigest()
+                hashes[file_hash] = filepath
