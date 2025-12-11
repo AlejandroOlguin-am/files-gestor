@@ -1,6 +1,22 @@
 import os
 import hashlib
 import shutil
+from PIL import Image
+
+def filtrar_imagenes_pequenas(directorio_img):
+    basura_dir = os.path.join(directorio_img, "_IMG_PEQUENAS")
+    os.makedirs(basura_dir, exist_ok=True)
+    
+    for filename in os.listdir(directorio_img):
+        try:
+            filepath = os.path.join(directorio_img, filename)
+            with Image.open(filepath) as img:
+                width, height = img.size
+                # Si es muy pequeña, es basura
+                if width < 400 or height < 400:
+                    shutil.move(filepath, os.path.join(basura_dir, filename))
+        except:
+            pass # No era imagen o estaba corrupta
 
 def calcular_hash(filepath):
     """Calcula el hash MD5 de un archivo leyendo por bloques (para no llenar la RAM)."""
