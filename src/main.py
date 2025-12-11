@@ -3,20 +3,28 @@ import hashlib
 import shutil
 from PIL import Image
 
-def filtrar_imagenes_pequenas(directorio_img):
-    basura_dir = os.path.join(directorio_img, "_IMG_PEQUENAS")
-    os.makedirs(basura_dir, exist_ok=True)
+def filtrar_imagenes_pequenas(directorio_imgenes, min_width=800, min_height=600):
+    """Elimina imágenes que son más pequeñas que las dimensiones mínimas especificadas."""
+    print(f"🔍 Analizando imágenes en: {directorio_imgenes}")
     
-    for filename in os.listdir(directorio_img):
-        try:
-            filepath = os.path.join(directorio_img, filename)
-            with Image.open(filepath) as img:
-                width, height = img.size
-                # Si es muy pequeña, es basura
-                if width < 400 or height < 400:
-                    shutil.move(filepath, os.path.join(basura_dir, filename))
-        except:
-            pass # No era imagen o estaba corrupta
+    contador_eliminados = 0
+
+    for root, dirs, files in os.walk(directorio_imgenes):
+        for filename in files:
+            if filename.lower().endswith(('.png', '.jpg', '.jpeg', '.bmp', '.gif')):
+                ruta_completa = os.path.join(root, filename)
+                try:
+                    with Image.open(ruta_completa) as img:
+                        width, height = img.size
+                        if width < min_width or height < min_height:
+                            os.remove(ruta_completa)
+                            contador_eliminados += 1
+                            print(f"🗑️ Eliminada: {filename} ({width}x{height})")
+                except Exception as e:
+                    print(f"Error procesando {ruta_completa}: {e}")
+
+    print("-" * 30)
+    print(f"✅ Proceso terminado. Se eliminaron {contador_eliminados} imágenes pequeñas.")
 
 def calcular_hash(filepath):
     """Calcula el hash MD5 de un archivo leyendo por bloques (para no llenar la RAM)."""
@@ -94,3 +102,4 @@ if __name__ == "__main__":
     # O puedes poner una ruta fija: ruta_a_limpiar = "/home/olguin/prueba_duplicados"
     
     mover_duplicados(ruta_a_limpiar)
+    filtrar_imagenes_pequenas(ruta_a_limpiar, min_width=800, min_height=600)
