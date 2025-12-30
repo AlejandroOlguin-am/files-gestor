@@ -5,7 +5,7 @@ from PIL import Image
 
 def filtrar_imagenes_pequenas(directorio_imgenes, min_width=800, min_height=600):
     """Elimina imágenes que son más pequeñas que las dimensiones mínimas especificadas."""
-    print(f"🔍 Analizando imágenes en: {directorio_imgenes}")
+    print(f"Analizando imágenes en: {directorio_imgenes}")
     
     contador_eliminados = 0
 
@@ -19,12 +19,12 @@ def filtrar_imagenes_pequenas(directorio_imgenes, min_width=800, min_height=600)
                         if width < min_width or height < min_height:
                             os.remove(ruta_completa)
                             contador_eliminados += 1
-                            print(f"🗑️ Eliminada: {filename} ({width}x{height})")
+                            print(f"Eliminada: {filename} ({width}x{height})")
                 except Exception as e:
                     print(f"Error procesando {ruta_completa}: {e}")
 
     print("-" * 30)
-    print(f"✅ Proceso terminado. Se eliminaron {contador_eliminados} imágenes pequeñas.")
+    print(f"Proceso terminado. Se eliminaron {contador_eliminados} imágenes pequeñas.")
 
 def calcular_hash(filepath):
     """Calcula el hash MD5 de un archivo leyendo por bloques (para no llenar la RAM)."""
@@ -42,7 +42,7 @@ def calcular_hash(filepath):
         return None
 
 def mover_duplicados(directorio_raiz):
-    print(f"🔍 Analizando: {directorio_raiz}")
+    print(f"Analizando: {directorio_raiz}")
     
     # Diccionario para guardar {HASH: RUTA_ARCHIVO_ORIGINAL}
     unicos = {}
@@ -76,7 +76,7 @@ def mover_duplicados(directorio_raiz):
             if file_hash in unicos:
                 # ¡Es un duplicado!
                 original = unicos[file_hash]
-                print(f"♻️ Duplicado encontrado: {filename}")
+                print(f"Duplicado encontrado: {filename}")
                 print(f"   -> Original era: {os.path.basename(original)}")
                 
                 # Mover a la carpeta de cuarentena
@@ -93,7 +93,7 @@ def mover_duplicados(directorio_raiz):
                 unicos[file_hash] = ruta_completa
 
     print("-" * 30)
-    print(f"✅ Proceso terminado. Se movieron {contador_duplicados} archivos a '_DUPLICADOS_DETECTADOS'.")
+    print(f"Proceso terminado. Se movieron {contador_duplicados} archivos a '_DUPLICADOS_DETECTADOS'.")
 
 # --- EJECUCIÓN ---
 if __name__ == "__main__":

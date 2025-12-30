@@ -47,10 +47,10 @@ def es_archivo_basura(nombre_archivo):
 def analizar_y_limpiar_carpetas():
     print(f"--- INICIANDO ANÁLISIS EN: {DIRECTORIO_RAIZ} ---")
     if DRY_RUN:
-        print("🚨 MODO SIMULACRO ACTIVO. NO SE BORRARÁ NADA. 🚨")
+        print(" MODO SIMULACRO ACTIVO. NO SE BORRARÁ NADA. ")
         print("Revisa la lista de abajo. Si estás de acuerdo, cambia DRY_RUN a False.")
     else:
-        print("⚠️ ATENCIÓN: MODO DE BORRADO REAL ACTIVO. ⚠️")
+        print(" ATENCIÓN: MODO DE BORRADO REAL ACTIVO. ")
         print("Tienes 5 segundos para cancelar (Ctrl+C) si te arrepientes...")
         import time
         time.sleep(5)
@@ -62,7 +62,7 @@ def analizar_y_limpiar_carpetas():
     try:
         lista_directorios = [d for d in os.listdir(DIRECTORIO_RAIZ) if os.path.isdir(os.path.join(DIRECTORIO_RAIZ, d))]
     except FileNotFoundError:
-        print(f"❌ Error: No se encuentra el directorio: {DIRECTORIO_RAIZ}")
+        print(f" Error: No se encuentra el directorio: {DIRECTORIO_RAIZ}")
         return
 
     for nombre_carpeta in lista_directorios:
@@ -101,7 +101,7 @@ def analizar_y_limpiar_carpetas():
 
         # Decisión: ¿Borrar o conservar?
         if porcentaje_basura >= UMBRAL_PORCENTAJE:
-            estado = "❌ A ELIMINAR"
+            estado = " A ELIMINAR"
             carpetas_eliminadas += 1
             accion_realizada = False
             
@@ -110,7 +110,7 @@ def analizar_y_limpiar_carpetas():
                     # shutil.rmtree elimina un directorio y TODO su contenido
                     shutil.rmtree(ruta_carpeta_completa)
                     accion_realizada = True
-                    estado = "🔥 ELIMINADA"
+                    estado = " ELIMINADA"
                 except Exception as e:
                      print(f"Error al eliminar {nombre_carpeta}: {e}")
 
@@ -120,7 +120,7 @@ def analizar_y_limpiar_carpetas():
             carpetas_conservadas += 1
             # Opcional: Mostrar carpetas que se salvan para ver qué tienen
             # if porcentaje_basura > 50: # Solo mostrar las dudosas
-            #    print(f"[✅ CONSERVADA] {nombre_carpeta}: {total_basura}/{total_archivos} basura ({porcentaje_basura:.1f}%)")
+            #    print(f"[CONSERVADA] {nombre_carpeta}: {total_basura}/{total_archivos} basura ({porcentaje_basura:.1f}%)")
 
     print("-" * 30)
     estado_final = "simuladas para eliminación" if DRY_RUN else "ELIMINADAS permanentemente"
