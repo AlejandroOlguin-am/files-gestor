@@ -19,3 +19,8 @@ def get_genios():
 def get_frutas():
     rows = ["Manzana", "Banana", "Cereza", "Dátil", "Elderberry"]
     return rows
+
+@app.get("/multimillonarios")
+def get_multimillonarios():
+    rows = ["Bill Gates", "Elon Musk", "Jeff Bezos", "Warret Buffet", "Carlos Slim"]
+    return rows
