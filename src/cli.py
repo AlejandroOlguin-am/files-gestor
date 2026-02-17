@@ -4,8 +4,13 @@ import argparse
 import os
 import sys
 
-from files_gestor.purge import purge_by_type
-from files_gestor.rules import DEFAULT_ALLOWED_EXTENSIONS, PurgeByTypeConfig
+from files_gestor.purge import purge_by_type, purge_small_images, purge_short_videos
+from files_gestor.rules import (
+    DEFAULT_ALLOWED_EXTENSIONS,
+    PurgeByTypeConfig,
+    PurgeShortVideosConfig,
+    PurgeSmallImagesConfig,
+)
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -33,6 +38,70 @@ def _build_parser() -> argparse.ArgumentParser:
         type=float,
         default=1.0,
         help="Borra archivos sin extensión si son menores a este tamaño (MB). Default: 1.0",
+    )
+
+    # ── purge-small-images ──
+    p_small = sub.add_parser(
+        "purge-small-images",
+        help="Elimina imágenes pequeñas (iconos, thumbnails) y con aspect ratio extremo.",
+    )
+    p_small.add_argument("--root", required=True, help="Ruta a testdisk-7.3-WIP")
+    p_small.add_argument(
+        "--apply",
+        action="store_true",
+        help="Ejecuta borrado real (si no se indica, es dry-run).",
+    )
+    p_small.add_argument(
+        "--recup-prefix",
+        default="recup_dir",
+        help="Prefijo de carpetas a procesar (default: recup_dir)",
+    )
+    p_small.add_argument(
+        "--min-width",
+        type=int,
+        default=200,
+        help="Ancho mínimo en px (default: 200)",
+    )
+    p_small.add_argument(
+        "--min-height",
+        type=int,
+        default=200,
+        help="Alto mínimo en px (default: 200)",
+    )
+    p_small.add_argument(
+        "--max-aspect-ratio",
+        type=float,
+        default=5.0,
+        help="Aspect ratio máximo permitido (default: 5.0)",
+    )
+
+    # ── purge-short-videos ──
+    p_video = sub.add_parser(
+        "purge-short-videos",
+        help="Elimina videos cortos o muy pequeños (estados de WhatsApp, clips basura).",
+    )
+    p_video.add_argument("--root", required=True, help="Ruta a testdisk-7.3-WIP")
+    p_video.add_argument(
+        "--apply",
+        action="store_true",
+        help="Ejecuta borrado real (si no se indica, es dry-run).",
+    )
+    p_video.add_argument(
+        "--recup-prefix",
+        default="recup_dir",
+        help="Prefijo de carpetas a procesar (default: recup_dir)",
+    )
+    p_video.add_argument(
+        "--min-duration",
+        type=float,
+        default=5.0,
+        help="Duración mínima en segundos (default: 5.0)",
+    )
+    p_video.add_argument(
+        "--min-size-kb",
+        type=float,
+        default=500.0,
+        help="Tamaño mínimo en KB (default: 500)",
     )
 
     return parser
@@ -64,6 +133,55 @@ def main(argv: list[str] | None = None) -> int:
                 return 2
 
         purge_by_type(cfg)
+        return 0
+
+    if args.command == "purge-small-images":
+        root = os.path.abspath(args.root)
+        dry_run = not bool(args.apply)
+
+        cfg = PurgeSmallImagesConfig(
+            root_dir=root,
+            dry_run=dry_run,
+            process_recup_prefix=args.recup_prefix,
+            min_width=args.min_width,
+            min_height=args.min_height,
+            max_aspect_ratio=args.max_aspect_ratio,
+        )
+
+        if not cfg.dry_run:
+            print("ATENCIÓN: BORRADO REAL ACTIVO.")
+            print(f"Root: {cfg.root_dir}")
+            print(f"Filtro: imágenes < {cfg.min_width}x{cfg.min_height} px o aspect ratio > {cfg.max_aspect_ratio}")
+            confirm = input("Escribe 'BORRAR' para confirmar: ").strip()
+            if confirm != "BORRAR":
+                print("Cancelado.")
+                return 2
+
+        purge_small_images(cfg)
+        return 0
+
+    if args.command == "purge-short-videos":
+        root = os.path.abspath(args.root)
+        dry_run = not bool(args.apply)
+
+        cfg = PurgeShortVideosConfig(
+            root_dir=root,
+            dry_run=dry_run,
+            process_recup_prefix=args.recup_prefix,
+            min_duration_secs=args.min_duration,
+            min_size_bytes=int(args.min_size_kb * 1_000),
+        )
+
+        if not cfg.dry_run:
+            print("ATENCIÓN: BORRADO REAL ACTIVO.")
+            print(f"Root: {cfg.root_dir}")
+            print(f"Filtro: videos < {cfg.min_duration_secs}s o < {args.min_size_kb} KB")
+            confirm = input("Escribe 'BORRAR' para confirmar: ").strip()
+            if confirm != "BORRAR":
+                print("Cancelado.")
+                return 2
+
+        purge_short_videos(cfg)
         return 0
 
     parser.print_help()

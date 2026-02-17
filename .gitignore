@@ -40,3 +40,6 @@ _DUPLICADOS_DETECTADOS/
 # Archivos de sistema
 .env
 .env.local
+
+# Otros
+CLAUDE.md
