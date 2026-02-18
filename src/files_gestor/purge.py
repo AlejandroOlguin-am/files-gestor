@@ -1,16 +1,19 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import shutil
 import subprocess
+from collections import defaultdict
 from dataclasses import dataclass
-from typing import Dict, Optional, Tuple
+from typing import DefaultDict, Dict, List, Optional, Tuple
 
 from .report import append_csv_row, ensure_reports_dir, write_csv_header
 from .rules import (
     IMAGE_EXTENSIONS,
     VIDEO_EXTENSIONS,
+    DeduplicateConfig,
     PurgeByTypeConfig,
     PurgeShortVideosConfig,
     PurgeSmallImagesConfig,
@@ -348,3 +351,121 @@ def purge_short_videos(cfg: PurgeShortVideosConfig) -> str:
 
     _print_total(stats_total, report_paths.report_csv_path)
     return report_paths.report_csv_path
+
+
+# ── Deduplicate by exact hash ──────────────────────────────────────
+
+
+def _file_sha256(path: str) -> Optional[str]:
+    """Calcula SHA-256 de un archivo. Retorna None si falla."""
+    try:
+        h = hashlib.sha256()
+        with open(path, "rb") as f:
+            while chunk := f.read(8192):
+                h.update(chunk)
+        return h.hexdigest()
+    except OSError:
+        return None
+
+
+def deduplicate(cfg: DeduplicateConfig) -> str:
+    report_paths = ensure_reports_dir(cfg.root_dir, cfg.reports_dirname)
+    write_csv_header(report_paths.report_csv_path)
+
+    recup_dirs = list_recup_dirs(cfg.root_dir, cfg.process_recup_prefix)
+    if not recup_dirs:
+        raise FileNotFoundError(
+            f"No se encontraron carpetas '{cfg.process_recup_prefix}*' dentro de: {cfg.root_dir}"
+        )
+
+    # Paso 1: Agrupar archivos por tamaño (solo hashear si hay colisión de tamaño)
+    print("Paso 1/3: Escaneando archivos...")
+    by_size: DefaultDict[int, List[FileEntry]] = defaultdict(list)
+    total_files = 0
+
+    for recup_dir in recup_dirs:
+        if os.path.basename(recup_dir) in cfg.exclude_dirnames:
+            continue
+        for entry in iter_files_in_dir(recup_dir):
+            by_size[entry.size_bytes].append(entry)
+            total_files += 1
+
+    candidates = {size: entries for size, entries in by_size.items() if len(entries) > 1}
+    files_to_hash = sum(len(entries) for entries in candidates.values())
+    print(f"  Total archivos: {total_files}")
+    print(f"  Candidatos a duplicados (mismo tamaño): {files_to_hash}")
+
+    # Paso 2: Hashear candidatos
+    print("Paso 2/3: Calculando hashes...")
+    by_hash: DefaultDict[str, List[FileEntry]] = defaultdict(list)
+    hash_errors = 0
+
+    for entries in candidates.values():
+        for entry in entries:
+            file_hash = _file_sha256(entry.path)
+            if file_hash is None:
+                hash_errors += 1
+                continue
+            by_hash[file_hash].append(entry)
+
+    # Paso 3: Eliminar duplicados (conservar el primero encontrado)
+    print("Paso 3/3: Procesando duplicados...")
+    stats = PurgeStats()
+    duplicate_groups = 0
+
+    for file_hash, entries in by_hash.items():
+        if len(entries) < 2:
+            continue
+
+        duplicate_groups += 1
+        keep = entries[0]
+        duplicates = entries[1:]
+
+        append_csv_row(
+            report_paths.report_csv_path,
+            action="keep",
+            dry_run=cfg.dry_run,
+            reason=f"original_hash_{file_hash[:12]}",
+            extension=keep.extension,
+            size_bytes=keep.size_bytes,
+            file_path=keep.path,
+        )
+        stats.kept_files += 1
+        stats.kept_bytes += keep.size_bytes
+
+        for dup in duplicates:
+            stats.scanned_files += 1
+            append_csv_row(
+                report_paths.report_csv_path,
+                action="delete",
+                dry_run=cfg.dry_run,
+                reason=f"duplicate_of_{file_hash[:12]}",
+                extension=dup.extension,
+                size_bytes=dup.size_bytes,
+                file_path=dup.path,
+            )
+
+            if cfg.dry_run:
+                stats.deleted_files += 1
+                stats.deleted_bytes += dup.size_bytes
+                continue
+
+            try:
+                os.remove(dup.path)
+                stats.deleted_files += 1
+                stats.deleted_bytes += dup.size_bytes
+            except OSError:
+                stats.errors += 1
+
+    print("-" * 40)
+    print(f"Grupos de duplicados: {duplicate_groups}")
+    print(
+        f"Archivos duplicados: {stats.deleted_files} "
+        f"({stats.deleted_bytes / 1_000_000:.1f} MB)"
+    )
+    if hash_errors:
+        print(f"Errores de lectura: {hash_errors}")
+    print(f"Reporte CSV: {report_paths.report_csv_path}")
+
+    return report_paths.report_csv_path
+

@@ -105,3 +105,30 @@ class PurgeShortVideosConfig:
 
     reports_dirname: str = "_reports"
     exclude_dirnames: FrozenSet[str] = frozenset({"_reports"})
+
+
+@dataclass(frozen=True)
+class DeduplicateConfig:
+    root_dir: str
+    process_recup_prefix: str = "recup_dir"
+
+    dry_run: bool = True
+
+    reports_dirname: str = "_reports"
+    exclude_dirnames: FrozenSet[str] = frozenset({"_reports"})
+
+
+DOC_EXTENSIONS: FrozenSet[str] = frozenset({".pdf", ".docx", ".pptx"})
+
+
+@dataclass(frozen=True)
+class OrganizeConfig:
+    root_dir: str
+    output_dir: str
+    process_recup_prefix: str = "recup_dir"
+
+    dry_run: bool = True
+    move: bool = False
+
+    reports_dirname: str = "_reports"
+    exclude_dirnames: FrozenSet[str] = frozenset({"_reports"})

@@ -4,9 +4,12 @@ import argparse
 import os
 import sys
 
-from files_gestor.purge import purge_by_type, purge_small_images, purge_short_videos
+from files_gestor.organize import organize
+from files_gestor.purge import deduplicate, purge_by_type, purge_small_images, purge_short_videos
 from files_gestor.rules import (
     DEFAULT_ALLOWED_EXTENSIONS,
+    DeduplicateConfig,
+    OrganizeConfig,
     PurgeByTypeConfig,
     PurgeShortVideosConfig,
     PurgeSmallImagesConfig,
@@ -104,6 +107,46 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Tamaño mínimo en KB (default: 500)",
     )
 
+    # ── deduplicate ──
+    p_dedup = sub.add_parser(
+        "deduplicate",
+        help="Elimina archivos duplicados (mismo hash SHA-256).",
+    )
+    p_dedup.add_argument("--root", required=True, help="Ruta a testdisk-7.3-WIP")
+    p_dedup.add_argument(
+        "--apply",
+        action="store_true",
+        help="Ejecuta borrado real (si no se indica, es dry-run).",
+    )
+    p_dedup.add_argument(
+        "--recup-prefix",
+        default="recup_dir",
+        help="Prefijo de carpetas a procesar (default: recup_dir)",
+    )
+
+    # ── organize ──
+    p_org = sub.add_parser(
+        "organize",
+        help="Copia (o mueve) archivos de recup_dir.* a una carpeta organizada por tipo y fecha.",
+    )
+    p_org.add_argument("--root", required=True, help="Ruta a testdisk-7.3-WIP")
+    p_org.add_argument("--output-dir", required=True, help="Carpeta destino (puede ser otro disco)")
+    p_org.add_argument(
+        "--apply",
+        action="store_true",
+        help="Ejecuta la operación real (si no se indica, es dry-run).",
+    )
+    p_org.add_argument(
+        "--move",
+        action="store_true",
+        help="Mueve los archivos en vez de copiarlos.",
+    )
+    p_org.add_argument(
+        "--recup-prefix",
+        default="recup_dir",
+        help="Prefijo de carpetas a procesar (default: recup_dir)",
+    )
+
     return parser
 
 
@@ -182,6 +225,54 @@ def main(argv: list[str] | None = None) -> int:
                 return 2
 
         purge_short_videos(cfg)
+        return 0
+
+    if args.command == "deduplicate":
+        root = os.path.abspath(args.root)
+        dry_run = not bool(args.apply)
+
+        cfg = DeduplicateConfig(
+            root_dir=root,
+            dry_run=dry_run,
+            process_recup_prefix=args.recup_prefix,
+        )
+
+        if not cfg.dry_run:
+            print("ATENCIÓN: BORRADO REAL ACTIVO.")
+            print(f"Root: {cfg.root_dir}")
+            print("Se eliminarán archivos duplicados (mismo SHA-256).")
+            confirm = input("Escribe 'BORRAR' para confirmar: ").strip()
+            if confirm != "BORRAR":
+                print("Cancelado.")
+                return 2
+
+        deduplicate(cfg)
+        return 0
+
+    if args.command == "organize":
+        root = os.path.abspath(args.root)
+        output_dir = os.path.abspath(args.output_dir)
+        dry_run = not bool(args.apply)
+
+        cfg = OrganizeConfig(
+            root_dir=root,
+            output_dir=output_dir,
+            dry_run=dry_run,
+            move=args.move,
+            process_recup_prefix=args.recup_prefix,
+        )
+
+        if not cfg.dry_run:
+            action_word = "MOVER" if cfg.move else "COPIAR"
+            print(f"ATENCIÓN: {'MOVER' if cfg.move else 'COPIAR'} REAL ACTIVO.")
+            print(f"Root:   {cfg.root_dir}")
+            print(f"Destino: {cfg.output_dir}")
+            confirm = input(f"Escribe '{action_word}' para confirmar: ").strip()
+            if confirm != action_word:
+                print("Cancelado.")
+                return 2
+
+        organize(cfg)
         return 0
 
     parser.print_help()
