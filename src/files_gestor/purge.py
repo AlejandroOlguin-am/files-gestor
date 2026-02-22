@@ -12,9 +12,11 @@ from typing import DefaultDict, Dict, List, Optional, Tuple
 from .report import append_csv_row, ensure_reports_dir, write_csv_header
 from .rules import (
     IMAGE_EXTENSIONS,
+    PHASH_EXTENSIONS,
     VIDEO_EXTENSIONS,
     DeduplicateConfig,
     PurgeByTypeConfig,
+    PurgeSimilarImagesConfig,
     PurgeShortVideosConfig,
     PurgeSmallImagesConfig,
 )
@@ -469,3 +471,222 @@ def deduplicate(cfg: DeduplicateConfig) -> str:
 
     return report_paths.report_csv_path
 
+
+# ── Purge similar images (perceptual hash) ─────────────────────────
+
+
+def _make_union_find(n: int) -> List[int]:
+    return list(range(n))
+
+
+def _uf_find(parent: List[int], i: int) -> int:
+    while parent[i] != i:
+        parent[i] = parent[parent[i]]  # path compression (halving)
+        i = parent[i]
+    return i
+
+
+def _uf_union(parent: List[int], i: int, j: int) -> None:
+    ri, rj = _uf_find(parent, i), _uf_find(parent, j)
+    if ri != rj:
+        parent[rj] = ri
+
+
+def _compute_phash(path: str) -> Optional[Any]:
+    """Calcula el pHash perceptual de una imagen. Retorna None en cualquier error."""
+    try:
+        import imagehash
+        from PIL import Image
+
+        with Image.open(path) as img:
+            img.load()  # fuerza la decodificación completa para detectar archivos truncados
+            return imagehash.phash(img)
+    except Exception:
+        return None
+
+
+def purge_similar_images(cfg: PurgeSimilarImagesConfig) -> str:
+    report_paths = ensure_reports_dir(cfg.root_dir, cfg.reports_dirname)
+    write_csv_header(report_paths.report_csv_path)
+
+    recup_dirs = list_recup_dirs(cfg.root_dir, cfg.process_recup_prefix)
+    if not recup_dirs:
+        raise FileNotFoundError(
+            f"No se encontraron carpetas '{cfg.process_recup_prefix}*' dentro de: {cfg.root_dir}"
+        )
+
+    # ── Paso 1: Escanear imágenes ──────────────────────────────────
+    print("Paso 1/3: Escaneando imágenes...")
+    entries: List[FileEntry] = []
+    heic_skipped = 0
+
+    for recup_dir in recup_dirs:
+        if os.path.basename(recup_dir) in cfg.exclude_dirnames:
+            continue
+        for entry in iter_files_in_dir(recup_dir):
+            if entry.extension not in IMAGE_EXTENSIONS:
+                continue
+            if entry.extension not in PHASH_EXTENSIONS:
+                # HEIC/HEIF u otra extensión sin soporte PIL confiable
+                append_csv_row(
+                    report_paths.report_csv_path,
+                    action="keep",
+                    dry_run=cfg.dry_run,
+                    reason="heic_skipped_no_decoder",
+                    extension=entry.extension,
+                    size_bytes=entry.size_bytes,
+                    file_path=entry.path,
+                )
+                heic_skipped += 1
+                continue
+            entries.append(entry)
+
+    n = len(entries)
+    print(f"  Imágenes a procesar: {n}  (HEIC/HEIF omitidas: {heic_skipped})")
+
+    # ── Paso 2: Calcular pHash ─────────────────────────────────────
+    print("Paso 2/3: Calculando pHashes...")
+    hashes: List[Optional[Any]] = []
+    hash_errors = 0
+
+    for idx, entry in enumerate(entries):
+        h = _compute_phash(entry.path)
+        hashes.append(h)
+        if h is None:
+            hash_errors += 1
+        if (idx + 1) % 500 == 0:
+            print(f"  {idx + 1}/{n} procesados...")
+
+    print(f"  Hashes calculados: {n - hash_errors}  errores: {hash_errors}")
+
+    # ── Paso 3: Agrupar y decidir ──────────────────────────────────
+    print("Paso 3/3: Agrupando similares...")
+
+    valid: List[Tuple[int, Any]] = [
+        (i, hashes[i]) for i in range(n) if hashes[i] is not None
+    ]
+
+    parent = _make_union_find(n)
+
+    # Fase exacta O(m): agrupar por representación de string del hash
+    exact_buckets: DefaultDict[str, List[int]] = defaultdict(list)
+    for i, h in valid:
+        exact_buckets[str(h)].append(i)
+
+    for bucket in exact_buckets.values():
+        for j in range(1, len(bucket)):
+            _uf_union(parent, bucket[0], bucket[j])
+
+    # Identificar singletons para la fase difusa
+    root_to_members: DefaultDict[int, List[int]] = defaultdict(list)
+    for i, _ in valid:
+        root_to_members[_uf_find(parent, i)].append(i)
+
+    singletons = [members[0] for members in root_to_members.values() if len(members) == 1]
+
+    # Fase difusa O(s²): solo entre singletons
+    if cfg.max_distance > 0:
+        s = len(singletons)
+        if s > cfg.fuzzy_cap:
+            print(
+                f"  Advertencia: {s} singletons > fuzzy_cap={cfg.fuzzy_cap}. "
+                "Se omite la fase difusa para evitar O(n²) excesivo."
+            )
+        else:
+            print(f"  Fase difusa: comparando {s} singletons...")
+            for a in range(s):
+                for b in range(a + 1, s):
+                    ia, ib = singletons[a], singletons[b]
+                    if _uf_find(parent, ia) == _uf_find(parent, ib):
+                        continue
+                    dist = hashes[ia] - hashes[ib]
+                    if dist <= cfg.max_distance:
+                        _uf_union(parent, ia, ib)
+
+    # Reconstruir grupos finales
+    final_groups: DefaultDict[int, List[int]] = defaultdict(list)
+    for i, _ in valid:
+        final_groups[_uf_find(parent, i)].append(i)
+
+    # Decisiones
+    stats = PurgeStats()
+    similar_groups = 0
+
+    for group_members in final_groups.values():
+        if len(group_members) == 1:
+            # Único en su grupo — no es similar a nada, solo anotar si quisiéramos,
+            # pero para mantener el CSV limpio lo saltamos (no hay acción).
+            continue
+
+        similar_groups += 1
+        # Ordenar por tamaño descendente → el más grande se conserva
+        group_members.sort(key=lambda idx: entries[idx].size_bytes, reverse=True)
+        keep_idx = group_members[0]
+        keep_entry = entries[keep_idx]
+        keep_hash_str = str(hashes[keep_idx])[:12]
+
+        append_csv_row(
+            report_paths.report_csv_path,
+            action="keep",
+            dry_run=cfg.dry_run,
+            reason=f"largest_in_similar_group_{keep_hash_str}",
+            extension=keep_entry.extension,
+            size_bytes=keep_entry.size_bytes,
+            file_path=keep_entry.path,
+        )
+        stats.kept_files += 1
+        stats.kept_bytes += keep_entry.size_bytes
+
+        for del_idx in group_members[1:]:
+            del_entry = entries[del_idx]
+            dist = hashes[keep_idx] - hashes[del_idx]
+            reason = f"similar_to_{keep_hash_str}_dist{dist}"
+
+            append_csv_row(
+                report_paths.report_csv_path,
+                action="delete",
+                dry_run=cfg.dry_run,
+                reason=reason,
+                extension=del_entry.extension,
+                size_bytes=del_entry.size_bytes,
+                file_path=del_entry.path,
+            )
+
+            if cfg.dry_run:
+                stats.deleted_files += 1
+                stats.deleted_bytes += del_entry.size_bytes
+                continue
+
+            try:
+                os.remove(del_entry.path)
+                stats.deleted_files += 1
+                stats.deleted_bytes += del_entry.size_bytes
+            except OSError:
+                stats.errors += 1
+
+    # Anotar archivos con hash fallido
+    for i in range(n):
+        if hashes[i] is None:
+            append_csv_row(
+                report_paths.report_csv_path,
+                action="keep",
+                dry_run=cfg.dry_run,
+                reason="phash_error_unreadable",
+                extension=entries[i].extension,
+                size_bytes=entries[i].size_bytes,
+                file_path=entries[i].path,
+            )
+
+    print("-" * 40)
+    print(f"Grupos de similares: {similar_groups}")
+    print(
+        f"Archivos eliminados: {stats.deleted_files} "
+        f"({stats.deleted_bytes / 1_000_000:.1f} MB)"
+    )
+    if hash_errors:
+        print(f"Errores de lectura (hash fallido): {hash_errors}")
+    if heic_skipped:
+        print(f"HEIC/HEIF omitidas (sin decoder): {heic_skipped}")
+    print(f"Reporte CSV: {report_paths.report_csv_path}")
+
+    return report_paths.report_csv_path

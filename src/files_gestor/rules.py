@@ -121,6 +121,32 @@ class DeduplicateConfig:
 DOC_EXTENSIONS: FrozenSet[str] = frozenset({".pdf", ".docx", ".pptx"})
 
 
+# Extensiones con soporte PIL confiable para pHash.
+# HEIC/HEIF excluido: Pillow requiere el paquete opcional pillow-heif.
+# Para habilitarlas: pip install pillow-heif y agregar ".heic"/".heif" aquí.
+PHASH_EXTENSIONS: FrozenSet[str] = frozenset({
+    ".jpg", ".jpeg", ".png", ".webp", ".bmp",
+})
+
+
+@dataclass(frozen=True)
+class PurgeSimilarImagesConfig:
+    root_dir: str
+    process_recup_prefix: str = "recup_dir"
+
+    dry_run: bool = True
+
+    # Distancia Hamming máxima entre pHashes para considerar imágenes similares.
+    # 0 = solo duplicados exactos de pHash; 10 = agrupa versiones WhatsApp; 64 = todo igual.
+    max_distance: int = 10
+
+    # Límite O(n²): si hay más singletons que este valor, se omite la fase difusa.
+    fuzzy_cap: int = 5_000
+
+    reports_dirname: str = "_reports"
+    exclude_dirnames: FrozenSet[str] = frozenset({"_reports"})
+
+
 @dataclass(frozen=True)
 class OrganizeConfig:
     root_dir: str

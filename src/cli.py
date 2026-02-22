@@ -5,12 +5,13 @@ import os
 import sys
 
 from files_gestor.organize import organize
-from files_gestor.purge import deduplicate, purge_by_type, purge_small_images, purge_short_videos
+from files_gestor.purge import deduplicate, purge_by_type, purge_similar_images, purge_small_images, purge_short_videos
 from files_gestor.rules import (
     DEFAULT_ALLOWED_EXTENSIONS,
     DeduplicateConfig,
     OrganizeConfig,
     PurgeByTypeConfig,
+    PurgeSimilarImagesConfig,
     PurgeShortVideosConfig,
     PurgeSmallImagesConfig,
 )
@@ -122,6 +123,35 @@ def _build_parser() -> argparse.ArgumentParser:
         "--recup-prefix",
         default="recup_dir",
         help="Prefijo de carpetas a procesar (default: recup_dir)",
+    )
+
+    # ── purge-similar-images ──
+    p_similar = sub.add_parser(
+        "purge-similar-images",
+        help="Elimina imágenes visualmente similares (pHash), conserva la de mayor tamaño.",
+    )
+    p_similar.add_argument("--root", required=True, help="Ruta a testdisk-7.3-WIP")
+    p_similar.add_argument(
+        "--apply",
+        action="store_true",
+        help="Ejecuta borrado real (si no se indica, es dry-run).",
+    )
+    p_similar.add_argument(
+        "--recup-prefix",
+        default="recup_dir",
+        help="Prefijo de carpetas a procesar (default: recup_dir)",
+    )
+    p_similar.add_argument(
+        "--max-distance",
+        type=int,
+        default=10,
+        help="Distancia Hamming máxima entre pHashes (0=exacto, 10=WhatsApp, default: 10)",
+    )
+    p_similar.add_argument(
+        "--fuzzy-cap",
+        type=int,
+        default=5_000,
+        help="Límite de singletons para la fase difusa O(n²) (default: 5000)",
     )
 
     # ── organize ──
@@ -247,6 +277,30 @@ def main(argv: list[str] | None = None) -> int:
                 return 2
 
         deduplicate(cfg)
+        return 0
+
+    if args.command == "purge-similar-images":
+        root = os.path.abspath(args.root)
+        dry_run = not bool(args.apply)
+
+        cfg = PurgeSimilarImagesConfig(
+            root_dir=root,
+            dry_run=dry_run,
+            process_recup_prefix=args.recup_prefix,
+            max_distance=args.max_distance,
+            fuzzy_cap=args.fuzzy_cap,
+        )
+
+        if not cfg.dry_run:
+            print("ATENCIÓN: BORRADO REAL ACTIVO.")
+            print(f"Root: {cfg.root_dir}")
+            print(f"Distancia máxima pHash: {cfg.max_distance} bits Hamming")
+            confirm = input("Escribe 'BORRAR' para confirmar: ").strip()
+            if confirm != "BORRAR":
+                print("Cancelado.")
+                return 2
+
+        purge_similar_images(cfg)
         return 0
 
     if args.command == "organize":
