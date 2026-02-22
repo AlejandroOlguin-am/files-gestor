@@ -169,3 +169,14 @@ class ClassifyTextImagesConfig:
     text_threshold: float = 0.30             # fracción [0-1] de píxeles cubiertos por texto
     reports_dirname: str = "_reports"
     exclude_dirnames: FrozenSet[str] = frozenset({"_reports"})
+
+
+@dataclass(frozen=True)
+class DetectFacesConfig:
+    root_dir: str
+    output_dir: str                           # carpeta destino para imágenes con caras
+    process_recup_prefix: str = "recup_dir"
+    dry_run: bool = True
+    min_detection_confidence: float = 0.5    # umbral de confianza mediapipe [0-1]
+    reports_dirname: str = "_reports"
+    exclude_dirnames: FrozenSet[str] = frozenset({"_reports"})

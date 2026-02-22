@@ -2,3 +2,5 @@ pillow
 imageio-ffmpeg
 imagehash
 pytesseract
+mediapipe
+numpy

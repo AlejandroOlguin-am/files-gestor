@@ -5,12 +5,14 @@ import os
 import sys
 
 from files_gestor.classify import classify_text_images
+from files_gestor.faces import detect_faces
 from files_gestor.organize import organize
 from files_gestor.purge import deduplicate, purge_by_type, purge_similar_images, purge_small_images, purge_short_videos
 from files_gestor.rules import (
     ClassifyTextImagesConfig,
     DEFAULT_ALLOWED_EXTENSIONS,
     DeduplicateConfig,
+    DetectFacesConfig,
     OrganizeConfig,
     PurgeByTypeConfig,
     PurgeSimilarImagesConfig,
@@ -207,6 +209,34 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Fracción mínima de píxeles con texto para mover la imagen [0-1] (default: 0.30)",
     )
 
+    # ── detect-faces ──
+    p_faces = sub.add_parser(
+        "detect-faces",
+        help="Mueve imágenes con caras detectadas (mediapipe) a una carpeta de fotos personales.",
+    )
+    p_faces.add_argument("--root", required=True, help="Ruta a testdisk-7.3-WIP")
+    p_faces.add_argument(
+        "--output-dir",
+        required=True,
+        help="Carpeta destino para imágenes con caras detectadas.",
+    )
+    p_faces.add_argument(
+        "--apply",
+        action="store_true",
+        help="Ejecuta el movimiento real (si no se indica, es dry-run).",
+    )
+    p_faces.add_argument(
+        "--recup-prefix",
+        default="recup_dir",
+        help="Prefijo de carpetas a procesar (default: recup_dir)",
+    )
+    p_faces.add_argument(
+        "--min-confidence",
+        type=float,
+        default=0.5,
+        help="Umbral de confianza de detección mediapipe [0-1] (default: 0.5)",
+    )
+
     return parser
 
 
@@ -383,6 +413,32 @@ def main(argv: list[str] | None = None) -> int:
                 return 2
 
         classify_text_images(cfg)
+        return 0
+
+    if args.command == "detect-faces":
+        root = os.path.abspath(args.root)
+        output_dir = os.path.abspath(args.output_dir)
+        dry_run = not bool(args.apply)
+
+        cfg = DetectFacesConfig(
+            root_dir=root,
+            output_dir=output_dir,
+            dry_run=dry_run,
+            process_recup_prefix=args.recup_prefix,
+            min_detection_confidence=args.min_confidence,
+        )
+
+        if not cfg.dry_run:
+            print("ATENCIÓN: MOVER REAL ACTIVO.")
+            print(f"Root:    {cfg.root_dir}")
+            print(f"Destino: {cfg.output_dir}")
+            print(f"Confianza mínima: {cfg.min_detection_confidence}")
+            confirm = input("Escribe 'MOVER' para confirmar: ").strip()
+            if confirm != "MOVER":
+                print("Cancelado.")
+                return 2
+
+        detect_faces(cfg)
         return 0
 
     parser.print_help()
