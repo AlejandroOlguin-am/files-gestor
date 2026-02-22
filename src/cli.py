@@ -4,9 +4,11 @@ import argparse
 import os
 import sys
 
+from files_gestor.classify import classify_text_images
 from files_gestor.organize import organize
 from files_gestor.purge import deduplicate, purge_by_type, purge_similar_images, purge_small_images, purge_short_videos
 from files_gestor.rules import (
+    ClassifyTextImagesConfig,
     DEFAULT_ALLOWED_EXTENSIONS,
     DeduplicateConfig,
     OrganizeConfig,
@@ -177,6 +179,34 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Prefijo de carpetas a procesar (default: recup_dir)",
     )
 
+    # ── classify-text-images ──
+    p_classify = sub.add_parser(
+        "classify-text-images",
+        help="Mueve imágenes con alto porcentaje de texto (memes, screenshots, apuntes) a una carpeta de cuarentena.",
+    )
+    p_classify.add_argument("--root", required=True, help="Ruta a testdisk-7.3-WIP")
+    p_classify.add_argument(
+        "--output-dir",
+        required=True,
+        help="Carpeta destino para imágenes con texto detectado.",
+    )
+    p_classify.add_argument(
+        "--apply",
+        action="store_true",
+        help="Ejecuta el movimiento real (si no se indica, es dry-run).",
+    )
+    p_classify.add_argument(
+        "--recup-prefix",
+        default="recup_dir",
+        help="Prefijo de carpetas a procesar (default: recup_dir)",
+    )
+    p_classify.add_argument(
+        "--text-threshold",
+        type=float,
+        default=0.30,
+        help="Fracción mínima de píxeles con texto para mover la imagen [0-1] (default: 0.30)",
+    )
+
     return parser
 
 
@@ -327,6 +357,32 @@ def main(argv: list[str] | None = None) -> int:
                 return 2
 
         organize(cfg)
+        return 0
+
+    if args.command == "classify-text-images":
+        root = os.path.abspath(args.root)
+        output_dir = os.path.abspath(args.output_dir)
+        dry_run = not bool(args.apply)
+
+        cfg = ClassifyTextImagesConfig(
+            root_dir=root,
+            output_dir=output_dir,
+            dry_run=dry_run,
+            process_recup_prefix=args.recup_prefix,
+            text_threshold=args.text_threshold,
+        )
+
+        if not cfg.dry_run:
+            print("ATENCIÓN: MOVER REAL ACTIVO.")
+            print(f"Root:    {cfg.root_dir}")
+            print(f"Destino: {cfg.output_dir}")
+            print(f"Umbral de texto: {cfg.text_threshold * 100:.0f}%")
+            confirm = input("Escribe 'MOVER' para confirmar: ").strip()
+            if confirm != "MOVER":
+                print("Cancelado.")
+                return 2
+
+        classify_text_images(cfg)
         return 0
 
     parser.print_help()

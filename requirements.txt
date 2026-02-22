@@ -1,3 +1,4 @@
 pillow
 imageio-ffmpeg
 imagehash
+pytesseract

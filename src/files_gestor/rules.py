@@ -158,3 +158,14 @@ class OrganizeConfig:
 
     reports_dirname: str = "_reports"
     exclude_dirnames: FrozenSet[str] = frozenset({"_reports"})
+
+
+@dataclass(frozen=True)
+class ClassifyTextImagesConfig:
+    root_dir: str
+    output_dir: str                          # carpeta destino para imágenes con texto
+    process_recup_prefix: str = "recup_dir"
+    dry_run: bool = True
+    text_threshold: float = 0.30             # fracción [0-1] de píxeles cubiertos por texto
+    reports_dirname: str = "_reports"
+    exclude_dirnames: FrozenSet[str] = frozenset({"_reports"})
